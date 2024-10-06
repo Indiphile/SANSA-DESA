@@ -1,0 +1,98 @@
+---
+services:
+  desa-explorer:
+    image: opendatacube/explorer:latest
+    container_name: explorer
+    ports:
+      - 80:8080
+    environment:
+      # - DB_HOSTNAME=host.docker.internal
+      DB_HOSTNAME: "${PGDB_HOSTNAME}"
+      DB_USERNAME: "${PGDB_USERNAME}"
+      DB_PASSWORD: "${PGDB_PASSWORD}"
+      DB_DATABASE: "${PGDB_DATABASE}"
+      DB_PORT: "5432"
+      FLASK_ENV: deployment
+      FLASK_APP: cubedash
+      FLASK_DEBUG: 1
+      CUBEDASH_DEFAULT_TIMEZONE: Australia/Darwin
+      # - VIRTUAL_HOST=datacube.explorer
+    depends_on:
+      - desa-postgres
+
+  desa-sandbox:
+    image: indiphile/desa-sandbox:latest
+    container_name: sandbox
+    environment:
+      AWS_NO_SIGN_REQUEST: "true"
+      AWS_DEFAULT_REGION: ap-southeast-2
+      DATACUBE_DB_URL: postgresql://${PGDB_USERNAME}:${PGDB_PASSWORD}@${PGDB_HOSTNAME}/${PGDB_DATABASE}
+
+    ports:
+      - "9988:9988"
+    restart: always
+    volumes:
+      - ./notebooks:/home/indiphile
+  desa-maps:
+    container_name: desa-maps
+    image: indiphile/desa-map:latest
+    ports:
+      - "3001:3001"
+
+  desa-postgres:
+    container_name: desa-postgres
+    image: postgis/postgis:16-3.4
+    hostname: "${PGDB_HOSTNAME}"
+    environment:
+      POSTGRES_DB: "${PGDB_DATABASE}"
+      POSTGRES_PASSWORD: "${PGDB_PASSWORD}"
+      POSTGRES_USER: "${PGDB_USERNAME}"
+    ports:
+      - "5432:5432"
+    restart: always
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-h",
+          "postgres",
+          "-q",
+          "-d",
+          "opendatacube",
+          "-U",
+          "opendatacube",
+        ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+
+  desa-pgadmin:
+    container_name: desa-pgadmin
+    image: dpage/pgadmin4
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ingqambuza@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: 123456
+    ports:
+      - "5050:80"
+
+  ows:
+    image: opendatacube/ows:latest
+    environment:
+      DB_HOSTNAME: "${PGDB_HOSTNAME}"
+      DB_USERNAME: "${PGDB_USERNAME}"
+      DB_PASSWORD: "${PGDB_PASSWORD}"
+      DB_DATABASE: "${PGDB_DATABASE}"
+      DB_PORT: 5432
+      PYTHONPATH: /env/config
+      DATACUBE_OWS_CFG: ows_refactored.dev_af_ows_root_cfg.ows_cfg
+    ports:
+      - "8005:8000"
+    depends_on:
+      - desa-postgres
+    volumes:
+      - ./products:/env/products
+      - ./services/ows_refactored:/env/config/ows_refactored/
+      - ./services/inventory:/env/config/inventory/
+      - ./output:/env/config/output/
