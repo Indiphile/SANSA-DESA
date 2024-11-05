@@ -1,2 +1,0 @@
-#!/bin/bash
-aws-vault --backend=file exec $1 --duration=4h --
