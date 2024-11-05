@@ -1,5 +1,0 @@
---extra-index-url https://packages.dea.ga.gov.au/
-datacube-stats
-fc
-hdstats
-wofs
