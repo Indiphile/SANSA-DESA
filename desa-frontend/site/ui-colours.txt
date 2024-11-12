@@ -1,0 +1,6 @@
+main(blue) = #1A315C
+2nd(light-blue) = #1283C6
+
+font = Acto SemiBold
+
+montserrat
