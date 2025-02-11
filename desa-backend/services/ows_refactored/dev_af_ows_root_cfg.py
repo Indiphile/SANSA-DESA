@@ -23,8 +23,8 @@ ows_cfg = {
             },
         },
         "allowed_urls": [
+            "http://10.150.16.178:8005",
             "http://localhost:8005",
-            "https://ows-latest.dev.digitalearth.africa",
         ],
         # Metadata to go straight into GetCapabilities documents
         "title": "Digital Earth South Africa - OGC Web Services",
