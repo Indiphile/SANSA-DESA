@@ -1,11 +1,30 @@
----
+
 services:
+
+
+  # NGINX reverse proxy to hide all ports
+  desa-nginx:
+    image: nginx:alpine
+    container_name: desa-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+    restart: always
+    depends_on:
+      - desa-explorer
+      - desa-pgadmin
+      - desa-ows
+    networks:
+      - desa-network
+
+  # OpenDataCube Explorer
   desa-explorer:
     image: opendatacube/explorer:latest
-    ports:
-      - 84:8080
+    container_name: explorer
     environment:
-      # - DB_HOSTNAME=host.docker.internal
       DB_HOSTNAME: "${PGDB_HOSTNAME}"
       DB_USERNAME: "${PGDB_USERNAME}"
       DB_PASSWORD: "${PGDB_PASSWORD}"
@@ -15,32 +34,25 @@ services:
       FLASK_APP: cubedash
       FLASK_DEBUG: 1
       CUBEDASH_DEFAULT_TIMEZONE: Australia/Darwin
-      # - VIRTUAL_HOST=datacube.explorer
+    networks:
+      - desa-network
+    depends_on:
+      - desa-postgres
 
-  desa-jupyterhub:
-    build: ./desa-jupyterhub
-    image: jupyter
-    environment:
-      AWS_NO_SIGN_REQUEST: true
-      AWS_DEFAULT_REGION: af-south-1
-      DATACUBE_DB_URL=: postgresql://${PGDB_USERNAME}:${PGDB_PASSWORD}@${PGDB_HOSTNAME}/${PGDB_DATABASE}
-
-    volumes:
-      - ./desa-jupyterhub/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py
-      - jupyterhub_data:/srv/jupyterhub/data
-      - ./desa-jupyterhub/jupyterhub.key:/srv/jupyterhub/jupyterhub.key:ro
-      - ./desa-jupyterhub/jupyterhub.crt:/srv/jupyterhub/jupyterhub.crt:ro
-
-    ports:
-      - "8001:8000"
-    restart: unless-stopped
-
+  # JupyterHub service
   desa-terriamap:
     build: ./desa-terriamap
-    image: terrimap
-    ports:
+    image: terriamap  
+    container_name: map
+    networks:
+      - desa-network
+    expose:
       - "3001:3001"
+    restart: unless-stopped
+      
+    
 
+  # PostgreSQL database
   desa-postgres:
     container_name: desa-postgres
     image: postgis/postgis:16-3.4
@@ -49,8 +61,11 @@ services:
       POSTGRES_DB: "${PGDB_DATABASE}"
       POSTGRES_PASSWORD: "${PGDB_PASSWORD}"
       POSTGRES_USER: "${PGDB_USERNAME}"
-    ports:
-      - "5432:5432"
+    # Expose port only internally, not on host
+    expose:
+      - "5432"
+    networks:
+      - desa-network
     restart: always
     healthcheck:
       test:
@@ -68,7 +83,10 @@ services:
       timeout: 45s
       interval: 10s
       retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
+  # PGAdmin interface
   desa-pgadmin:
     container_name: desa-pgadmin
     image: dpage/pgadmin4
@@ -76,27 +94,38 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: ingqambuza@gmail.com
       PGADMIN_DEFAULT_PASSWORD: 123456
-    ports:
-      - "5050:80"
+    networks:
+      - desa-network
+    depends_on:
+      - desa-postgres
 
+  # OWS service
   desa-ows:
-    image: opendatacube/ows:latest
+    image: opendatacube/ows:1.8.0-rc1
     environment:
       DB_HOSTNAME: "${PGDB_HOSTNAME}"
       DB_USERNAME: "${PGDB_USERNAME}"
       DB_PASSWORD: "${PGDB_PASSWORD}"
       DB_DATABASE: "${PGDB_DATABASE}"
       DB_PORT: 5432
+      AWS_DEFAULT_REGION: "${AWS_REGION}"
+      AWS_NO_SIGN_REQUEST: "${AWS_NO_SIGN_REQUEST}"
       PYTHONPATH: /env/config
       DATACUBE_OWS_CFG: ows_refactored.dev_af_ows_root_cfg.ows_cfg
-    ports:
-      - "8005:8000"
+    networks:
+      - desa-network
     depends_on:
       - desa-postgres
     volumes:
-      - ./products:/env/products
-      - ./services/ows_refactored:/env/config/ows_refactored/
-      - ./services/inventory:/env/config/inventory/
-      - ./output:/env/config/output/
+      - ./desa-ows/products:/products
+      - ./desa-ows/services/ows_refactored:/env/config/ows_refactored/
+      - ./desa-ows/services/inventory:/env/config/inventory/
+      - ./desa-ows/output:/env/config/output/
+
+networks:
+  desa-network:
+    driver: bridge
+
 volumes:
   jupyterhub_data:
+  postgres_data:
