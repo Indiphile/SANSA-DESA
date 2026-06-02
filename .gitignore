@@ -2,4 +2,8 @@
 /desa-backend/.env
 /desa-frontend/.env
 /desa-frontend/desa-frontend - Copy/
-
+/desa-backend-nginx/.env
+/desa-backend-nginx/nginx/ssl/sansa-private.key
+/desa-backend-nginx/nginx/ssl/sansa-private.crt
+/desa-backend-nginx/desa-jupyterhub/.env
+/desa-backend-nginx/desa-jupyterhub/datacube.conf
