@@ -1,32 +1,36 @@
-# develop container
-FROM node:16 as develop
+# =============================================================
+# DESA TerriaMap — customized overlay on upstream TerriaMap
+# =============================================================
+# Adjust the base tag when upgrading. Confirm the WORKDIR of the
+# upstream image before changing the COPY destinations:
+#   docker inspect ghcr.io/terriajs/terriamap:<tag> \
+#     --format '{{.Config.WorkingDir}}'
+# =============================================================
 
-# build container
-FROM node:16 as build
+ARG TERRIAMAP_VERSION=latest
+FROM ghcr.io/terriajs/terriamap:${TERRIAMAP_VERSION}
+
+# The upstream image runs as an unprivileged user (usually `node`).
+# Switch to root only for the COPY, then switch back.
+USER root
+
+# --- SANSA / DESA customizations ---
+# Catalog & config
+COPY --chown=node:node wwwroot/config.json      /app/wwwroot/config.json
+COPY --chown=node:node wwwroot/init/simple.json  /app/wwwroot/init/simple.json
+
+# Branding (logos, favicons, custom images)
+COPY --chown=node:node wwwroot/images/          /app/wwwroot/images/
+
+# Optional overlays — uncomment only if you actually override them.
+# COPY --chown=node:node overlays/wwwroot/index.html     /app/wwwroot/index.html
+# COPY --chown=node:node overlays/serverconfig.json      /app/serverconfig.json
+
+# Return to the non-root user the upstream image expects
 USER node
 
-COPY --chown=node:node . /app
+# Healthcheck (upstream may already have one; this is safe to re-declare)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -qO- http://localhost:3001/ping || exit 1
 
-WORKDIR /app
-
-RUN yarn install --network-timeout 1000000
-RUN yarn gulp release
-
-# deploy container
-FROM node:16-slim as deploy
-
-USER node
-
-WORKDIR /app
-
-# Without the chown when copying directories, wwwroot is owned by root:root.
-COPY --from=build --chown=node:node /app/wwwroot wwwroot
-COPY --from=build --chown=node:node /app/node_modules node_modules
-COPY --from=build /app/serverconfig.json serverconfig.json
-COPY --from=build /app/index.js index.js
-COPY --from=build /app/package.json package.json
-COPY --from=build /app/version.js version.js
-
-EXPOSE 3001
-ENV NODE_ENV=production
-CMD [ "node", "./node_modules/terriajs-server/lib/app.js", "--config-file", "serverconfig.json" ]
+# Everything else — WORKDIR, EXPOSE, CMD — is inherited from the base image.
