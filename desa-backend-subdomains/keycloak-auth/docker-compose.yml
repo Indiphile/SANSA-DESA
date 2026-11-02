@@ -1,0 +1,90 @@
+# Compose project name. Pins the prefix for container/volume/network names so
+# the dev stack can never collide with the prod stack (docker-compose.prod.yml,
+# name: keycloak-prod) if both ever run on the same host. Kept as "keycloak-auth"
+# (the historical default = directory name) so the existing dev postgres volume
+# "keycloak-auth_postgres_data" is preserved.
+name: keycloak-auth
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: keycloak_postgres
+    restart: unless-stopped
+    ports: 
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    environment:
+      POSTGRES_DB: ${KC_DB_NAME}
+      POSTGRES_USER: ${KC_DB_USER}
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD}
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KC_DB_USER} -d ${KC_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - desa-network
+
+  keycloak:
+    build:
+      context: ./keycloak
+
+    container_name: keycloak
+    restart: unless-stopped
+
+    command:
+      - start-dev
+      - --import-realm
+      # Keycloak 26 option format: --spi-<spi>--<option>
+      - --spi-theme--cache-themes=false
+      - --spi-theme--cache-templates=false
+      - --spi-theme--static-max-age=-1
+
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak_postgres:5432/${KC_DB_NAME}
+      KC_DB_USERNAME: ${KC_DB_USER}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_HOSTNAME: ${KC_HOSTNAME}
+      KC_HOSTNAME_STRICT: "true"
+      KC_HTTP_ENABLED: "true"
+      # Keycloak 26 ignores X-Forwarded-* headers unless this is set. nginx
+      # terminates TLS and forwards to Keycloak over HTTP, so without this the
+      # account console gets scheme-mismatched responses ("Server responded
+      # with an invalid status").
+      KC_PROXY_HEADERS: xforwarded
+
+      # Keycloak 26: replaces KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD.
+      # Only used the first time, when the master realm has no admin yet.
+      # Values come from .env (git-ignored) — see .env.example.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+
+    # Live-mount the custom theme so edits to .ftl/.css/.properties show on a
+    # browser refresh (theme caching is disabled above).
+    volumes:
+      - ./keycloak/themes/dst-sansa:/opt/keycloak/themes/dst-sansa:ro
+      - ./keycloak/themes/sansa-admin:/opt/keycloak/themes/sansa-admin:ro
+      - ./keycloak/themes/desa:/opt/keycloak/themes/desa:ro
+
+    ports:
+      - "8088:8080"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - desa-network
+      
+volumes:
+  postgres_data:
+
+networks:
+  desa-network:
+    external: true
+    name: desa-network
